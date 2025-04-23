@@ -1,3 +1,4 @@
+import { ClerkProvider } from '@clerk/nextjs';
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
@@ -17,9 +18,10 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
+  <ClerkProvider>
     <html lang="en">
       <body className={inter.className}>
-        <div className="flex min-h-screen flex-col">
+        {<div className="flex min-h-screen flex-col">
           <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="container flex h-16 items-center">
               <div className="mr-4 flex">
@@ -69,8 +71,9 @@ export default function RootLayout({
               </div>
             </div>
           </footer>
-        </div>
+        </div>}
       </body>
     </html>
+  </ClerkProvider>
   )
 }
