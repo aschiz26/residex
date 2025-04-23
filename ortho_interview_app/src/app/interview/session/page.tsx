@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getQuestion } from '@/lib/database'
-import { generateEnhancedFeedback, generateEnhancedFollowUpQuestion } from '@/lib/enhanced-ai'
+import { generateOpenAIFeedback, generateOpenAIFollowUpQuestion } from '@/lib/openai-integration'
 import { Question } from '@/lib/database'
 import { Mic, MicOff, Send, ArrowLeft, ArrowRight } from 'lucide-react'
 
@@ -30,6 +30,7 @@ function InterviewSessionContent() {
   const [isRecording, setIsRecording] = useState(false)
   const [feedback, setFeedback] = useState<any | null>(null)
   const [followUpQuestion, setFollowUpQuestion] = useState('')
+  const [processingFeedback, setProcessingFeedback] = useState(false)
   
   useEffect(() => {
     async function loadQuestion() {
@@ -66,18 +67,29 @@ function InterviewSessionContent() {
   const handleSubmitResponse = async () => {
     if (!question) return
     
+    setProcessingFeedback(true)
     setSessionState(SessionState.FEEDBACK)
     
     try {
-      // Generate enhanced feedback with more detailed points
-      const feedbackResult = await generateEnhancedFeedback(question.question_text, userResponse)
+      // Generate feedback using OpenAI
+      const feedbackResult = await generateOpenAIFeedback(question.question_text, userResponse)
       setFeedback(feedbackResult)
       
-      // Generate follow-up question
-      const followUp = await generateEnhancedFollowUpQuestion(question.question_text, userResponse)
+      // Generate follow-up question using OpenAI
+      const followUp = await generateOpenAIFollowUpQuestion(question.question_text, userResponse)
       setFollowUpQuestion(followUp)
     } catch (error) {
       console.error('Failed to generate feedback:', error)
+      // Set default feedback in case of error
+      setFeedback({
+        feedback: "There was an error generating feedback. Please try again.",
+        contentScore: 50,
+        presentationScore: 50,
+        strengths: ["Your answer contained relevant information"],
+        improvements: ["Consider providing more specific details"]
+      })
+    } finally {
+      setProcessingFeedback(false)
     }
   }
   
@@ -185,68 +197,80 @@ function InterviewSessionContent() {
             </Card>
           ) : null}
           
-          {sessionState === SessionState.FEEDBACK && feedback ? (
+          {sessionState === SessionState.FEEDBACK && (
             <Card>
               <CardHeader>
                 <CardTitle>Feedback</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                <p>{feedback.feedback}</p>
-                
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium">Content Score</span>
-                      <span className="text-sm font-medium">{feedback.contentScore}%</span>
-                    </div>
-                    <Progress value={feedback.contentScore} className="h-2" />
+                {processingFeedback ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                    <p className="text-muted-foreground">Analyzing your response with AI...</p>
+                    <p className="text-xs text-muted-foreground mt-2">This may take a few moments</p>
                   </div>
-                  
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium">Presentation Score</span>
-                      <span className="text-sm font-medium">{feedback.presentationScore}%</span>
+                ) : feedback ? (
+                  <>
+                    <p>{feedback.feedback}</p>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="text-sm font-medium">Content Score</span>
+                          <span className="text-sm font-medium">{feedback.contentScore}%</span>
+                        </div>
+                        <Progress value={feedback.contentScore} className="h-2" />
+                      </div>
+                      
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="text-sm font-medium">Presentation Score</span>
+                          <span className="text-sm font-medium">{feedback.presentationScore}%</span>
+                        </div>
+                        <Progress value={feedback.presentationScore} className="h-2" />
+                      </div>
                     </div>
-                    <Progress value={feedback.presentationScore} className="h-2" />
-                  </div>
-                </div>
-                
-                <Tabs defaultValue="strengths">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="strengths">Strengths</TabsTrigger>
-                    <TabsTrigger value="improvements">Areas for Improvement</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="strengths" className="space-y-2 mt-2">
-                    {feedback.strengths.length > 0 ? (
-                      <ul className="list-disc pl-5 space-y-2">
-                        {feedback.strengths.map((strength, index) => (
-                          <li key={index} className="text-sm">{strength}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-sm text-gray-500">No specific strengths identified.</p>
-                    )}
-                  </TabsContent>
-                  <TabsContent value="improvements" className="space-y-2 mt-2">
-                    {feedback.improvements.length > 0 ? (
-                      <ul className="list-disc pl-5 space-y-2">
-                        {feedback.improvements.map((improvement, index) => (
-                          <li key={index} className="text-sm">{improvement}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-sm text-gray-500">No specific improvements identified.</p>
-                    )}
-                  </TabsContent>
-                </Tabs>
+                    
+                    <Tabs defaultValue="strengths">
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="strengths">Strengths</TabsTrigger>
+                        <TabsTrigger value="improvements">Areas for Improvement</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="strengths" className="space-y-2 mt-2">
+                        {feedback.strengths.length > 0 ? (
+                          <ul className="list-disc pl-5 space-y-2">
+                            {feedback.strengths.map((strength, index) => (
+                              <li key={index} className="text-sm">{strength}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-sm text-gray-500">No specific strengths identified.</p>
+                        )}
+                      </TabsContent>
+                      <TabsContent value="improvements" className="space-y-2 mt-2">
+                        {feedback.improvements.length > 0 ? (
+                          <ul className="list-disc pl-5 space-y-2">
+                            {feedback.improvements.map((improvement, index) => (
+                              <li key={index} className="text-sm">{improvement}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-sm text-gray-500">No specific improvements identified.</p>
+                        )}
+                      </TabsContent>
+                    </Tabs>
+                  </>
+                ) : (
+                  <p>Error generating feedback. Please try again.</p>
+                )}
               </CardContent>
               <CardFooter>
-                <Button onClick={handleContinueToFollowUp} className="w-full">
+                <Button onClick={handleContinueToFollowUp} className="w-full" disabled={processingFeedback}>
                   Continue to Follow-up Question <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </CardFooter>
             </Card>
-          ) : null}
+          )}
           
           {sessionState === SessionState.FOLLOW_UP && (
             <Card>
@@ -290,3 +314,4 @@ export default function InterviewSessionPage() {
     </Suspense>
   )
 }
+
